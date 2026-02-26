@@ -1,10 +1,11 @@
 /**
- * OpenRouter API — модель openai/gpt-oss-120b:free
+ * OpenRouter API — openrouter/free автоматически выбирает доступную бесплатную модель
+ * (обход rate limit конкретных моделей)
  * https://openrouter.ai/docs
  */
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "openai/gpt-oss-120b:free";
+const MODEL = "openrouter/free";
 
 export interface SourceSuggestion {
   url: string;
