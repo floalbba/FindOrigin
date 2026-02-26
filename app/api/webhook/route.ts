@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendChatAction, sendMessage } from "@/lib/telegram";
 import { getTextFromInput } from "@/lib/text-source";
-import { extractEntities, buildSearchQuery } from "@/lib/entities";
+import { findSourcesWithAI, type SourceSuggestion } from "@/lib/ai";
 
 interface TelegramUpdate {
   message?: {
@@ -10,36 +10,38 @@ interface TelegramUpdate {
   };
 }
 
-function formatEntitiesReply(entities: ReturnType<typeof extractEntities>): string {
-  const lines: string[] = ["<b>Извлечённые сущности:</b>"];
+function formatSourcesReply(sources: SourceSuggestion[], summary?: string): string {
+  const lines: string[] = ["<b>Возможные источники:</b>\n"];
 
-  if (entities.claims.length > 0) {
-    lines.push(`\n<b>Утверждения:</b>\n• ${entities.claims.join("\n• ")}`);
-  }
-  if (entities.dates.length > 0) {
-    lines.push(`\n<b>Даты:</b> ${entities.dates.join(", ")}`);
-  }
-  if (entities.numbers.length > 0) {
-    lines.push(`\n<b>Числа:</b> ${entities.numbers.join(", ")}`);
-  }
-  if (entities.names.length > 0) {
-    lines.push(`\n<b>Имена:</b> ${entities.names.join(", ")}`);
-  }
-  if (entities.links.length > 0) {
-    lines.push(`\n<b>Ссылки:</b>\n${entities.links.join("\n")}`);
+  if (sources.length === 0) {
+    lines.push(summary ? `<i>${summary}</i>` : "Источники не найдены.");
+    return lines.join("");
   }
 
-  const query = buildSearchQuery(entities);
-  lines.push(`\n<b>Поисковый запрос:</b> ${query}`);
-  lines.push("\n<i>Поиск источников будет добавлен на следующем этапе.</i>");
+  sources.forEach((s, i) => {
+    lines.push(`${i + 1}. <a href="${s.url}">${s.title}</a>`);
+    if (s.description) lines.push(`   ${s.description}`);
+    lines.push(`   Уверенность: ${s.confidence}\n`);
+  });
+
+  if (summary) {
+    lines.push(`\n<i>${summary}</i>`);
+  }
 
   return lines.join("");
 }
 
 export async function POST(req: NextRequest) {
   const token = process.env.BOT_TOKEN;
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
   if (!token) {
     console.error("BOT_TOKEN не задан");
+    return NextResponse.json({ error: "Server config" }, { status: 500 });
+  }
+
+  if (!apiKey) {
+    console.error("OPENROUTER_API_KEY не задан");
     return NextResponse.json({ error: "Server config" }, { status: 500 });
   }
 
@@ -60,9 +62,8 @@ export async function POST(req: NextRequest) {
   if (text === "/start" || text === "/help") {
     const helpText =
       "<b>FindOrigin</b> — бот для поиска источников информации.\n\n" +
-      "Отправьте текст или ссылку на Telegram-пост, и я извлеку ключевые сущности " +
-      "(утверждения, даты, имена, ссылки) и подготовлю поисковый запрос.\n\n" +
-      "Поиск источников будет добавлен на следующем этапе.";
+      "Отправьте текст, и я с помощью AI найду возможные источники " +
+      "(официальные сайты, новости, блоги, исследования) с оценкой уверенности.";
     await sendMessage(chatId, helpText, token);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
@@ -81,10 +82,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  const entities = extractEntities(sourceResult.text);
-  const reply = formatEntitiesReply(entities);
-
-  await sendMessage(chatId, reply, token);
+  try {
+    const result = await findSourcesWithAI(sourceResult.text, apiKey);
+    const reply = formatSourcesReply(result.sources, result.summary);
+    await sendMessage(chatId, reply, token);
+  } catch (err) {
+    console.error("AI error:", err);
+    const msg = err instanceof Error ? err.message : "Ошибка при поиске источников.";
+    await sendMessage(chatId, `Ошибка: ${msg}`, token);
+  }
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
