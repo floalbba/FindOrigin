@@ -63,8 +63,8 @@ export async function POST(req: NextRequest) {
   if (text === "/start" || text === "/help") {
     const helpText =
       "<b>FindOrigin</b> — бот для поиска источников информации.\n\n" +
-      "Отправьте текст, и я с помощью AI найду возможные источники " +
-      "(официальные сайты, новости, блоги, исследования) с оценкой уверенности.";
+      "• Отправьте текст — найду возможные источники (официальные сайты, новости, блоги).\n" +
+      "• Или откройте Mini App через кнопку меню (если настроена).";
     await sendMessage(chatId, helpText, token);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
