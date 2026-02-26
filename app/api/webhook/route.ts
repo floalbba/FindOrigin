@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { sendChatAction, sendMessage } from "@/lib/telegram";
 import { getTextFromInput } from "@/lib/text-source";
 import { findSourcesWithAI, type SourceSuggestion } from "@/lib/ai";
@@ -68,8 +69,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  await sendChatAction(chatId, "typing", token);
-
   const sourceResult = getTextFromInput(text);
 
   if (sourceResult.error) {
@@ -82,15 +81,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  try {
-    const result = await findSourcesWithAI(sourceResult.text, apiKey);
-    const reply = formatSourcesReply(result.sources, result.summary);
-    await sendMessage(chatId, reply, token);
-  } catch (err) {
-    console.error("AI error:", err);
-    const msg = err instanceof Error ? err.message : "Ошибка при поиске источников.";
-    await sendMessage(chatId, `Ошибка: ${msg}`, token);
-  }
+  const textToProcess = sourceResult.text;
+  after(async () => {
+    await sendChatAction(chatId, "typing", token);
+    try {
+      const result = await findSourcesWithAI(textToProcess, apiKey);
+      const reply = formatSourcesReply(result.sources, result.summary);
+      await sendMessage(chatId, reply, token);
+    } catch (err) {
+      console.error("AI error:", err);
+      const msg = err instanceof Error ? err.message : "Ошибка при поиске источников.";
+      await sendMessage(chatId, `Ошибка: ${msg}`, token);
+    }
+  });
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
